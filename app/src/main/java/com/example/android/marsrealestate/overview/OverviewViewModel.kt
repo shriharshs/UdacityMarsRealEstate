@@ -27,6 +27,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+enum class MarsApiStatus { LOADING, ERROR, DONE }
+
 /**
  * The [ViewModel] that is attached to the [OverviewFragment].
  */
@@ -35,9 +37,9 @@ class OverviewViewModel : ViewModel() {
     private var viewModelJob = Job()
     private val coroutineScope = CoroutineScope(viewModelJob + Dispatchers.Main)
 
-    private val _status = MutableLiveData<String>()
+    private val _status = MutableLiveData<MarsApiStatus>()
 
-    val status: LiveData<String>
+    val status: LiveData<MarsApiStatus>
         get() = _status
 
     // Internally, we use a MutableLiveData, because we will be updating the MarsProperty with
@@ -47,6 +49,14 @@ class OverviewViewModel : ViewModel() {
     // The external LiveData interface to the properties is immutable, so only this class can modify
     val properties: LiveData<List<MarsProperty>>
         get() = _properties
+
+    // Internally, we use a MutableLiveData to handle navigation to the selected property
+    private val _navigateToSelectedProperty = MutableLiveData<MarsProperty>()
+
+    // The external immutable LiveData for the navigation property
+    val navigateToSelectedProperty: LiveData<MarsProperty>
+        get() = _navigateToSelectedProperty
+
 
     /**
      * Call getMarsRealEstateProperties() on init so we can display status immediately.
@@ -63,14 +73,32 @@ class OverviewViewModel : ViewModel() {
         coroutineScope.launch {
             var getPropertiesDeferred = MarsApi.retrofitService.getProperties()
             try {
+                _status.value = MarsApiStatus.LOADING
                 val listResult = getPropertiesDeferred.await()
-                _status.value = "Success: ${listResult.size}"
                 _properties.value = listResult
+                _status.value = MarsApiStatus.DONE
             } catch (e: Exception) {
-                _status.value = "Failure: ${e.message}"
+                _status.value = MarsApiStatus.ERROR
+                _properties.value = ArrayList()
             }
         }
     }
+
+    /**
+     * When the property is clicked, set the [_navigateToSelectedProperty] [MutableLiveData]
+     * @param marsProperty The [MarsProperty] that was clicked on.
+     */
+    fun displayPropertyDetails(marsProperty: MarsProperty) {
+        _navigateToSelectedProperty.value = marsProperty
+    }
+
+    /**
+     * After the navigation has taken place, make sure navigateToSelectedProperty is set to null
+     */
+    fun displayPropertyDetailsComplete() {
+        _navigateToSelectedProperty.value = null
+    }
+
 
     override fun onCleared() {
         super.onCleared()
