@@ -21,21 +21,32 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import com.example.android.marsrealestate.network.MarsApi
-import retrofit2.Call
-import retrofit2.Callback
-import retrofit2.Response
+import com.example.android.marsrealestate.network.MarsProperty
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 
 /**
  * The [ViewModel] that is attached to the [OverviewFragment].
  */
 class OverviewViewModel : ViewModel() {
 
-    // The internal MutableLiveData String that stores the most recent response
-    private val _response = MutableLiveData<String>()
+    private var viewModelJob = Job()
+    private val coroutineScope = CoroutineScope(viewModelJob + Dispatchers.Main)
 
-    // The external immutable LiveData for the request status String
-    val response: LiveData<String>
-        get() = _response
+    private val _status = MutableLiveData<String>()
+
+    val status: LiveData<String>
+        get() = _status
+
+    // Internally, we use a MutableLiveData, because we will be updating the MarsProperty with
+    // new values
+    private val _properties = MutableLiveData<List<MarsProperty>>()
+
+    // The external LiveData interface to the properties is immutable, so only this class can modify
+    val properties: LiveData<List<MarsProperty>>
+        get() = _properties
 
     /**
      * Call getMarsRealEstateProperties() on init so we can display status immediately.
@@ -49,14 +60,21 @@ class OverviewViewModel : ViewModel() {
      * Mars properties retrieved.
      */
     private fun getMarsRealEstateProperties() {
-        MarsApi.retrofitService.getProperties().enqueue( object: Callback<String> {
-            override fun onFailure(call: Call<String>, t: Throwable) {
-                _response.value = "Failure: " + t.message
+        coroutineScope.launch {
+            var getPropertiesDeferred = MarsApi.retrofitService.getProperties()
+            try {
+                val listResult = getPropertiesDeferred.await()
+                _status.value = "Success: ${listResult.size}"
+                _properties.value = listResult
+            } catch (e: Exception) {
+                _status.value = "Failure: ${e.message}"
             }
-
-            override fun onResponse(call: Call<String>, response: Response<String>) {
-                _response.value = response.body()
-            }
-        })
+        }
     }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelJob.cancel()
+    }
+
 }
